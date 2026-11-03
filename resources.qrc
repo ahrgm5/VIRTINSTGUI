@@ -1,0 +1,5 @@
+<RCC>
+    <qresource prefix="/xbox_ctrl.png">
+        <file>xbox_ctrl.png</file>
+    </qresource>
+</RCC>
