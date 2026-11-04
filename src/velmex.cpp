@@ -1,10 +1,13 @@
 #include "velmex.hpp"
 #include <algorithm>
 #include <stdexcept>
+#include <chrono>
+#include <thread>
+#include <iostream>
 
 const ChannelSettings VelmexVXM::defaultVelmexSettings() {
     ChannelSettings settings;
-    settings.timeoutMs = 1000;
+    settings.timeoutMs = 150;
     settings.terminationCharacter = '\r';
     settings.writeTermination = "\r";
     settings.baudRate = 38400;
@@ -74,27 +77,28 @@ int32_t VelmexVXM::getPosition(int axis) {
     default: return 0;
     }
 
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
     std::string raw = trim(query(cmd));
 
-    // 1. Find the first character that is NOT a caret or whitespace
-    size_t firstValid = raw.find_first_not_of("^ \t\r\n");
+    // If a move completion '^' or echoed axis letter was read first, read the next line
+    if (raw == "^" || raw == cmd || raw.empty()) {
+        raw = trim(read());
+    }
 
-    // 2. If the string is empty or only contained a caret, prevent std::stol from crashing
+    size_t firstValid = raw.find_first_of("+-0123456789");
+
     if (firstValid == std::string::npos) {
-        throw std::runtime_error("Empty or invalid response from Velmex");
+        throw std::runtime_error("Empty or invalid response from Velmex: " + raw);
     }
 
     raw.erase(0, firstValid);
 
-    // 3. Wrap the string-to-long conversion in a try-catch to guarantee it never crashes the app
     try {
         return static_cast<int32_t>(std::stol(raw));
     } catch (...) {
         throw std::runtime_error("Failed to parse Velmex position integer: " + raw);
     }
 }
-
-
 
 
 
@@ -113,30 +117,118 @@ void VelmexVXM::home(int axis) {
 
 
 
-void VelmexVXM::setBaudRate(int baudRate) {
-    std::string cmd;
 
-    // 1. Map the integer baud rate to the Velmex specific command codes
+int VelmexVXM::detectBaudRates(const std::string& resourceName) {
+    const std::vector<int> bdRts = {38400, 19200, 9600};
+    ChannelSettings settings = defaultVelmexSettings();
+
+    std::cout << "\n--- Starting Baud Rate Scan on " << resourceName << " ---\n";
+
+    for (int baud : bdRts) {
+        std::cout << "Testing " << baud << " baud... ";
+        settings.baudRate = baud;
+
+        if (isOpen()) close();
+
+        if (open(resourceName, settings)) {
+            try {
+                // Flush buffers and send Clear
+                viFlush(m_session, VI_READ_BUF | VI_WRITE_BUF);
+                write("C");
+                std::this_thread::sleep_for(std::chrono::milliseconds(100)); // Increased settling time
+
+                // If the baud rate is wrong, this query will throw a timeout exception
+                std::string resp = query("X");
+
+                std::cout << "SUCCESS! Hardware replied: [" << resp << "]\n";
+                return baud;
+            } catch (const std::exception& ex) {
+                std::cout << "Failed (Timeout/Garbage)\n";
+            }
+        }
+    }
+
+    if (isOpen()) close();
+    std::cout << "Scan complete: No valid baud rate found.\n";
+    return 0;
+}
+
+
+
+void VelmexVXM::setBaudRate(int baudRate) {
+    if (!isOpen()) {
+        throw std::runtime_error("Cannot change baud rate: VISA session is closed.");
+    }
+
+    std::string baudCode;
     if (baudRate == 9600) {
-        cmd = "setB9";
+        baudCode = "setB9";
     } else if (baudRate == 19200) {
-        cmd = "setB19";
+        baudCode = "setB19";
     } else if (baudRate == 38400) {
-        cmd = "setB38";
+        baudCode = "setB38";
     } else {
         throw std::invalid_argument("Invalid Velmex baud rate. Must be 9600, 19200, or 38400.");
     }
 
-    // 2. Send the command to tell the hardware to change its listening speed
-    write(cmd);
+    // 1. Tell the controller hardware to transition its UART clock
+    write("C," + baudCode + ",R");
 
-    // 3. Update the computer's COM port to match the new speed
-    ChannelSettings settings = defaultSettings();
+    // 2. Allow hardware UART to reconfigure
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+    // 3. Reconnect the PC serial port to match
+    std::string currentResource = m_resourceName;
+    close();
+
+    ChannelSettings settings = defaultVelmexSettings();
     settings.baudRate = baudRate;
+    open(currentResource, settings);
 
-    // Reopen the VISA session with the new speed (m_resourceName is inherited from Instrument)
-    open(m_resourceName, settings);
+    // 4. Flush spurious electrical noise produced during baud transition
+    viFlush(m_session, VI_READ_BUF | VI_WRITE_BUF);
+
+    // 5. Clear the controller state machine
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    write("C");
 }
+
+
+
+
+
+bool VelmexVXM::autoconnect(const std::string& resourceName) {
+    int current_Baud = detectBaudRates(resourceName);
+
+    if (current_Baud == 0) {
+        return false;
+    }
+
+    // The session is already open and confirmed working.
+    // Just clear the line one last time before returning control to main.
+    try {
+        viFlush(m_session, VI_READ_BUF | VI_WRITE_BUF);
+        write("C");
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 VelmexAdapter::VelmexAdapter(std::shared_ptr<VelmexVXM> velmex) : m_velmex(std::move(velmex)) {}
 void VelmexAdapter::moveRelative(int axis, int distance) { if (m_velmex && m_velmex->isOpen()) m_velmex->moveRelative(axis, distance); }

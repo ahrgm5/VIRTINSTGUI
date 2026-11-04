@@ -89,7 +89,9 @@ bool Instrument::open(const std::string& resourceName, const ChannelSettings& se
     if (status < VI_SUCCESS) {
         m_isOpen = false;
         m_session = VI_NULL;
-        return false;
+        char errDesc[256];
+        viStatusDesc(m_defaultRM, status, errDesc);
+        throw std::runtime_error("viOpen failed: " + std::string(errDesc) + " (Code: " + std::to_string(status) + ")");
     }
 
     m_isOpen = true;

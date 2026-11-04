@@ -51,8 +51,13 @@ set(TS_FILES untitled_ti_ER.ts)
 
 set(PROJECT_SOURCES
     # Qt GUI Files
-    test/main.cpp
-    #qt_main.cpp
+    
+        instrTest/VELMEX/single_BaudRate.cpp
+	#instrTest/ZABER/simpleOperation.cpp
+	#instrTest/SRSLDC502/simpleOperation.cpp
+	#instrTest/IPGYLR/simpleOperation.cpp
+        #main.cpp
+
     mainwindow.cpp
     mainwindow.h
     mainwindow.ui

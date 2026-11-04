@@ -116,7 +116,7 @@ MainWindow::MainWindow(QWidget *parent)
     ui->comboStation->addItem("-- Select Station --", "");
 
     // 1. Define the correct local path
-    QString configDirectoryPath = "C:/Users/aron.rezene/Documents/Work/Weld_Room_Projects/SFW/FORCE/VIRTINSTGUI_rev"; // Make sure your path goes here
+    QString configDirectoryPath = "C:/Users/aron.rezene/Documents/Work/Weld_Room_Projects/SFW/FORCE/VIRTINSTGUI"; // Make sure your path goes here
     QDir configDir(configDirectoryPath);
     QStringList filters;
     filters << "*.ini";
@@ -223,8 +223,10 @@ void MainWindow::loadStationConfig(const QString& iniFilePath)
             isConnected = instrument->open(resourceString.toStdString(), instrument->defaultSettings());
             if (devUpper.contains("VELMEX") || devUpper.contains("VXM")) {
                 try {
-                    instrument->write("rsm"); // Turns off the serial echo
+                    instrument->write("F"); // Turns off the serial echo
+                    Sleep(20);
                     instrument->write("C");   // Clears the buffer
+                    Sleep(50);
                 } catch (...) {}
             }
             if (isConnected && devUpper.contains("ZABER")) {

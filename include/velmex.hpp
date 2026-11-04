@@ -23,8 +23,9 @@ public:
     int32_t getPosition(int axis);
     void home(int axis);
 
+    int detectBaudRates(const std::string& resourceName);
     void setBaudRate(int baudRate);
-
+    bool autoconnect(const std::string &resourceName);
 };
 
 class VelmexAdapter : public IMotorAxis {
