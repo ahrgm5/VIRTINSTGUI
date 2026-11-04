@@ -22,6 +22,9 @@ public:
     void moveAbsolute(int axis, int position);
     int32_t getPosition(int axis);
     void home(int axis);
+
+    void setBaudRate(int baudRate);
+
 };
 
 class VelmexAdapter : public IMotorAxis {

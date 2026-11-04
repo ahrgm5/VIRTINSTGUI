@@ -51,7 +51,8 @@ set(TS_FILES untitled_ti_ER.ts)
 
 set(PROJECT_SOURCES
     # Qt GUI Files
-main.cpp
+    test/main.cpp
+    #qt_main.cpp
     mainwindow.cpp
     mainwindow.h
     mainwindow.ui
@@ -60,7 +61,7 @@ main.cpp
     include/ipg.hpp
     include/vrm.hpp
     include/instrument.hpp
-#    include/arroyo.hpp
+#include/arroyo.hpp
     include/remoteControl.hpp
     include/zaber.hpp
     include/velmex.hpp

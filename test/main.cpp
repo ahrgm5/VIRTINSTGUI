@@ -66,13 +66,19 @@ int main() {
             std::cout << "\n--- Connecting to Velmex ---\n";
 
             ChannelSettings settings = VelmexVXM::defaultVelmexSettings();
-            VelmexVXM vxm(rm.handle(), "ASRL10::INSTR", settings);
 
+
+            VelmexVXM vxm(rm.handle(), "ASRL6::INSTR", settings);
+
+
+            vxm.setBaudRate(38400);
             std::cout << "Velmex Status:" << vxm.isOpen() << std::endl;
 
-            std::cout << "Velmex 1: " << vxm.query("X") << std::endl;
-            std::cout << "Velmex 2: " << vxm.query("Y") << std::endl;
-            std::cout << "Velmex 3: " << vxm.query("Z") << std::endl;
+
+
+            std::cout << "Velmex 1: " << vxm.query("C,X") << std::endl;
+            std::cout << "Velmex 2: " << vxm.query("C,Y") << std::endl;
+            std::cout << "Velmex 3: " << vxm.query("C,Z") << std::endl;
 
             vxm.query("G, C, I1M-800, R");
             vxm.query("G, C, I2M-800, R");

@@ -20,9 +20,6 @@ const ChannelSettings VelmexVXM::defaultVelmexSettings() {
 VelmexVXM::VelmexVXM(ViSession defaultRM, const std::string& resourceName, const ChannelSettings& settings = defaultVelmexSettings()) : Instrument(defaultRM) {
     if (!resourceName.empty()) {
         open(resourceName, settings);
-        write("G, C, setBx38");
-        setAttribute(VI_ATTR_ASRL_BAUD, 38400, "Set the baud rate to 38400 for Velmex");
-
     }
 }
 
@@ -112,6 +109,33 @@ void VelmexVXM::home(int axis) {
                       ",I" + std::to_string(axis) + "M-0" +
                       ",IA" + std::to_string(axis) + "M-0,R";
     write(cmd);
+}
+
+
+
+void VelmexVXM::setBaudRate(int baudRate) {
+    std::string cmd;
+
+    // 1. Map the integer baud rate to the Velmex specific command codes
+    if (baudRate == 9600) {
+        cmd = "setB9";
+    } else if (baudRate == 19200) {
+        cmd = "setB19";
+    } else if (baudRate == 38400) {
+        cmd = "setB38";
+    } else {
+        throw std::invalid_argument("Invalid Velmex baud rate. Must be 9600, 19200, or 38400.");
+    }
+
+    // 2. Send the command to tell the hardware to change its listening speed
+    write(cmd);
+
+    // 3. Update the computer's COM port to match the new speed
+    ChannelSettings settings = defaultSettings();
+    settings.baudRate = baudRate;
+
+    // Reopen the VISA session with the new speed (m_resourceName is inherited from Instrument)
+    open(m_resourceName, settings);
 }
 
 VelmexAdapter::VelmexAdapter(std::shared_ptr<VelmexVXM> velmex) : m_velmex(std::move(velmex)) {}
