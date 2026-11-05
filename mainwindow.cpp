@@ -29,10 +29,12 @@ MainWindow::MainWindow(QWidget *parent)
 {
     ui->setupUi(this);
 
+    // --- Setup Dynamic Controller Command Labels ---
+    setupControllerLabels();
+    updateControllerOverlayLabels("");
+
     // --- Enforce Initial Splitter Geometry from .ui File ---
-    // This ensures the top section gets priority space and the bottom console
-    // respects its designed initial height rather than expanding to 50/50.
-    ui->verticalMainSplitter->setSizes({580, 200});
+    ui->verticalMainSplitter->setSizes({550, 230});
 
     // --- UI Setup for Video Feed & Stream Button ---
     if (ui->labelVideoPlaceholder) {
@@ -73,21 +75,23 @@ MainWindow::MainWindow(QWidget *parent)
     // --- Connect Execution Button ---
     connect(ui->btnExecuteSequence, &QPushButton::clicked, this, &MainWindow::onExecuteSequenceClicked);
 
-    // --- Initialize Camera ---
-    initCamera();
+    // --- Initialize Camera Safely After Window Creation ---
+    QTimer::singleShot(100, this, [this]() {
+        initCamera();
+    });
 
     // --- Timers ---
     m_cameraCheckTimer = new QTimer(this);
     connect(m_cameraCheckTimer, &QTimer::timeout, this, &MainWindow::checkCameraConnection);
-    m_cameraCheckTimer->start(1000);
+    m_cameraCheckTimer->start(2000); // Slowed down from 1s to 2s to reduce overhead
 
     m_deviceCheckTimer = new QTimer(this);
     connect(m_deviceCheckTimer, &QTimer::timeout, this, &MainWindow::checkDeviceConnections);
-    m_deviceCheckTimer->start(2000);
+    m_deviceCheckTimer->start(3000); // Slowed down slightly to prevent bus congestion
 
     m_positionUpdateTimer = new QTimer(this);
     connect(m_positionUpdateTimer, &QTimer::timeout, this, &MainWindow::updateDeviceTreePositions);
-    m_positionUpdateTimer->start(300);
+    m_positionUpdateTimer->start(400); // Slight bump to 400ms to free up UI thread for video frames
 
     // --- Initialize Controller ---
     if (m_remoteController.initialize()) {
@@ -99,10 +103,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     m_controllerTimer = new QTimer(this);
     connect(m_controllerTimer, &QTimer::timeout, this, &MainWindow::pollControllerInput);
-    // FIX: Drop polling from 100 ms to 16 ms (approx 60 Hz)
     m_controllerTimer->start(16);
-
-
 
 
     // --- Setup Station Selection Dropdown ---
@@ -329,10 +330,15 @@ void MainWindow::updateControllerTargetCombo()
 
 void MainWindow::onControllerTargetChanged(int index)
 {
+
+
     ui->textControllerStream->clear();
     ui->textControllerStream->setCurrentCharFormat(QTextCharFormat());
 
     QString devName = ui->comboRemoteTarget->itemData(index).toString();
+
+    // Update the controller graphic text overlays dynamically
+    updateControllerOverlayLabels(devName);
 
     if (devName.isEmpty() || !m_stationDevices.count(devName) || !m_stationDevices[devName]) {
         m_remoteController.clearTargetMotor();
@@ -670,8 +676,15 @@ void MainWindow::toggleStreaming()
     }
 }
 
+
+
 void MainWindow::checkCameraConnection()
 {
+    // If the device is already open and streaming, do nothing
+    if (m_grabber.isDeviceOpen() && m_isStreaming) {
+        return;
+    }
+
     bool currentlyOpen = m_grabber.isDeviceOpen();
 
     if (!currentlyOpen) {
@@ -700,6 +713,7 @@ void MainWindow::checkCameraConnection()
         }
     }
 }
+
 
 
 
@@ -785,3 +799,117 @@ void MainWindow::onExecuteSequenceClicked()
 
     emit executeSequenceRequested(seqKey, seqText);
 }
+
+
+void MainWindow::setupControllerLabels()
+{
+    if (!ui->labelControllerImage) return;
+
+    ui->labelControllerImage->installEventFilter(this);
+    m_controllerLabels.clear();
+
+    const double designCanvasWidth =400.0;
+    const double designCanvasHeight = 400.0;
+
+    QList<QLabel*> childLabels = ui->labelControllerImage->findChildren<QLabel*>(QString(), Qt::FindDirectChildrenOnly);
+
+    for (QLabel* lbl : childLabels) {
+        double normX = lbl->x() / designCanvasWidth;
+        double normY = lbl->y() / designCanvasHeight;
+        double normW = lbl->width() / designCanvasWidth;
+        double normH = lbl->height() / designCanvasHeight;
+
+        m_controllerLabels.append({lbl, normX, normY, normW, normH});
+    }
+
+    updateControllerLabelPositions();
+}
+
+
+void MainWindow::updateControllerLabelPositions()
+{
+    if (!ui->labelControllerImage) return;
+
+    int parentW = ui->labelControllerImage->width();
+    int parentH = ui->labelControllerImage->height();
+
+    for (const auto& item : m_controllerLabels) {
+        int x = static_cast<int>(item.normX * parentW);
+        int y = static_cast<int>(item.normY * parentH);
+        int w = static_cast<int>(item.normW * parentW);
+        int h = static_cast<int>(item.normH * parentH);
+        item.label->setGeometry(x, y, w, h);
+    }
+}
+
+
+
+void MainWindow::updateControllerOverlayLabels(const QString& devName)
+{
+    QString devUpper = devName.toUpper();
+
+    if (devName.isEmpty()) {
+
+
+        // Fallback for any other instrument type
+        ui->lbl_slow->setText("");
+        ui->lbl_bump_L->setText("");
+        ui->lbl_L_analog->setText("");
+        ui->lbl_dpad->setText("");
+        ui->lbl_view->setText("");
+        ui->lbl_menu->setText("");
+        ui->lbl_fast->setText("");
+        ui->lbl_bump_R->setText("");
+        ui->lbl_Y->setText("");
+        ui->lbl_X->setText("");
+        ui->lbl_B->setText("");
+        ui->lbl_A->setText("");
+        ui->lbl_R_analog->setText("");
+
+
+        // Default / Unselected State
+
+    }
+    else if (devUpper.contains("ZABER")) {
+        // Zaber Controller Mappings (10,000 step increments)
+        ui->lbl_slow->setText("");
+        ui->lbl_bump_L->setText("Z - Step");
+        ui->lbl_L_analog->setText("XY Jog (Toggle Speed)");
+        ui->lbl_dpad->setText("XY Step");
+        ui->lbl_view->setText("Target Select");
+        ui->lbl_menu->setText("");
+        ui->lbl_fast->setText("");
+        ui->lbl_bump_R->setText("Z + Step");
+        ui->lbl_Y->setText("");
+        ui->lbl_X->setText("");
+        ui->lbl_B->setText("Gripper Close");
+        ui->lbl_A->setText("Grippr Open");
+        ui->lbl_R_analog->setText("Z Jog (Toggle Speed)");
+    }
+    else if (devUpper.contains("VELMEX") || devUpper.contains("VXM")) {
+        // Velmex VXM Controller Mappings (100 step increments)
+        ui->lbl_slow->setText("");
+        ui->lbl_bump_L->setText("");
+        ui->lbl_L_analog->setText("XY Jog (Toggle Speed)");
+        ui->lbl_dpad->setText("XY Step");
+        ui->lbl_view->setText("Target Select");
+        ui->lbl_menu->setText("");
+        ui->lbl_fast->setText("");
+        ui->lbl_bump_R->setText("");
+        ui->lbl_Y->setText("");
+        ui->lbl_X->setText("");
+        ui->lbl_B->setText("Z - Step");
+        ui->lbl_A->setText("Z + Step");
+        ui->lbl_R_analog->setText("Z Jog (Toggle Speed)");
+    }
+
+}
+
+bool MainWindow::eventFilter(QObject *watched, QEvent *event)
+{
+    if (watched == ui->labelControllerImage && event->type() == QEvent::Resize) {
+        updateControllerLabelPositions();
+    }
+    return QMainWindow::eventFilter(watched, event);
+}
+

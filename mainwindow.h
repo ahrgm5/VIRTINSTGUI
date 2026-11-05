@@ -8,9 +8,11 @@
 #include <QTreeWidgetItem>
 #include <QElapsedTimer>
 #include <QMenu>
+#include <QList>
 #include <memory>
 #include <map>
 #include <ic4/ic4.h>
+#include <ic4-interop/interop-Qt.h>
 #include <remoteControl.hpp>
 #include <vrm.hpp>
 #include <instrument.hpp>
@@ -29,6 +31,9 @@ public:
 signals:
     void executeSequenceRequested(const QString& sequenceKey, const QString& sequenceDisplayName);
 
+protected:
+    bool eventFilter(QObject *watched, QEvent *event) override;
+
 private slots:
     void onStationSelected(int index);
     void toggleStreaming();
@@ -44,10 +49,23 @@ private:
     void initCamera();
     void updateControllerTargetCombo();
     void updateDeviceTreePositions();
+    void setupControllerLabels();
+    void updateControllerLabelPositions();
+    void updateControllerOverlayLabels(const QString& devName); // Add this line
 
     Ui::MainWindow *ui;
     QWidget *m_videoContainer;
     QPushButton *m_btnToggleStream;
+
+    // Controller Label Overlay Structure
+    struct ControllerLabelInfo {
+        QLabel *label;
+        double normX;
+        double normY;
+        double normW;
+        double normH;
+    };
+    QList<ControllerLabelInfo> m_controllerLabels;
 
     // IC4 Camera & Display
     ic4::Grabber m_grabber;

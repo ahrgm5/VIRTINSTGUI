@@ -1,0 +1,94 @@
+void MainWindow::setupControllerLabels()
+{
+    if (!ui->labelControllerImage) return;
+
+    // Install event filter on the controller image label to track resizing
+    ui->labelControllerImage->installEventFilter(this);
+
+    // Define label text and normalized bounding boxes (percentages 0.0 to 1.0 relative to image size)
+    struct LabelDef {
+        QString text;
+        double x, y, w, h;
+    };
+
+    QList<LabelDef> defs = {
+        { "LT: Slow / Retract",           0.02, 0.10, 0.22, 0.08 },
+        { "LB: Bumper L",                 0.02, 0.22, 0.22, 0.08 },
+        { "Left Analog: X/Y Jog\nL3: Center", 0.02, 0.38, 0.28, 0.12 },
+        { "D-Pad: Fine Step",             0.02, 0.62, 0.22, 0.08 },
+        { "View: Target Select",          0.32, 0.82, 0.18, 0.08 },
+        { "Menu: Options",                0.52, 0.82, 0.18, 0.08 },
+        { "RT: Fast / Advance",           0.76, 0.10, 0.22, 0.08 },
+        { "RB: Bumper R",                 0.76, 0.22, 0.22, 0.08 },
+        { "Y: Z-Axis Up",                 0.76, 0.35, 0.22, 0.06 },
+        { "X: X-Axis Left",               0.76, 0.42, 0.22, 0.06 },
+        { "B: X-Axis Right",              0.76, 0.49, 0.22, 0.06 },
+        { "A: Z-Axis Down",               0.76, 0.56, 0.22, 0.06 },
+        { "Right Analog: Z/Gripper\nR3: Center", 0.76, 0.66, 0.22, 0.12 }
+    };
+
+    for (const auto& def : defs) {
+        QLabel *lbl = new QLabel(def.text, ui->labelControllerImage);
+        lbl->setStyleSheet(
+            "QLabel {"
+            "  color: #ffffff;"
+            "  background-color: rgba(20, 20, 20, 190);"
+            "  border: 1px solid rgba(255, 255, 255, 70);"
+            "  border-radius: 3px;"
+            "  padding: 2px;"
+            "  font-size: 8pt;"
+            "  font-weight: bold;"
+            "}"
+        );
+        lbl->setAlignment(Qt::AlignCenter);
+        lbl->show();
+        m_controllerLabels.append({lbl, def.x, def.y, def.w, def.h});
+    }
+
+    updateControllerLabelPositions();
+}
+
+void MainWindow::updateControllerLabelPositions()
+{
+    if (!ui->labelControllerImage) return;
+
+    int parentW = ui->labelControllerImage->width();
+    int parentH = ui->labelControllerImage->height();
+
+    // Recalculate exact pixel geometries proportionally as the image scales
+    for (const auto& item : m_controllerLabels) {
+        int x = static_cast<int>(item.normX * parentW);
+        int y = static_cast<int>(item.normY * parentH);
+        int w = static_cast<int>(item.normW * parentW);
+        int h = static_cast<int>(item.normH * parentH);
+        item.label->setGeometry(x, y, w, h);
+    }
+}
+
+bool MainWindow::eventFilter(QObject *watched, QEvent *event)
+{
+    if (watched == ui->labelControllerImage && event->type() == QEvent::Resize) {
+        updateControllerLabelPositions();
+    }
+    return QMainWindow::eventFilter(watched, event);
+}
+
+
+
+
+
+
+
+
+
+MainWindow::MainWindow(QWidget *parent)
+    : QMainWindow(parent)
+    , ui(new Ui::MainWindow)
+    , m_isStreaming(false)
+{
+    ui->setupUi(this);
+
+    // --- Setup Dynamic Controller Command Labels ---
+    setupControllerLabels();
+
+    // ... (rest of your constructor code)
