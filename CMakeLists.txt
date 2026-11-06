@@ -20,6 +20,8 @@ find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets LinguistTools)
 
 ## --- Hardware & Imaging Dependencies ---
 find_package(SDL3 CONFIG REQUIRED)
+find_package(yaml-cpp CONFIG REQUIRED)
+
 
 # Fallback path for IC4 if environment variable IC4PATH is set or use system path
 if(DEFINED ENV{IC4PATH})
@@ -123,6 +125,7 @@ target_link_libraries(InstrumentationApp PRIVATE
    ${VISA_LIBRARY}
    SDL3::SDL3
    ic4::core
+   yaml-cpp::yaml-cpp
 )
 
 ## --- Post-Build Steps ---

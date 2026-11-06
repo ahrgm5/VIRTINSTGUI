@@ -134,7 +134,7 @@ void RemoteControl::bindVelmex(shared_ptr<VelmexVXM> velmex) {
 
 void RemoteControl::clearTargetMotor() {
     m_activeMotor.reset();
-    m_activeProfile = ControllerProfile::None;
+    m_activeProfile = ControllerProfile::GuiWide; // Fallback to GUI Wide when no motor is bound
 }
 
 void RemoteControl::processMotionCommands(int stepDistance, int speed) {

@@ -4,6 +4,9 @@
 #include "velmex.hpp"
 #include "ldc.hpp"
 #include "pm100D.hpp"
+
+#include <memory>
+#include <yaml-cpp/yaml.h>
 #include <instrument.hpp>
 
 #include <QMessageBox>
@@ -16,7 +19,8 @@
 #include <QBrush>
 #include <QColor>
 #include <QTextCursor>
-#include <memory>
+#include <QApplication> // Required for focusWidget tracking
+#include <QKeyEvent> // Add this near the top of mainwindow.cpp
 
 #ifdef Q_OS_WIN
 #include <windows.h>
@@ -72,8 +76,7 @@ MainWindow::MainWindow(QWidget *parent)
         delete menu;
     });
 
-    // --- Connect Execution Button ---
-    connect(ui->btnExecuteSequence, &QPushButton::clicked, this, &MainWindow::onExecuteSequenceClicked);
+
 
     // --- Initialize Camera Safely After Window Creation ---
     QTimer::singleShot(100, this, [this]() {
@@ -96,18 +99,20 @@ MainWindow::MainWindow(QWidget *parent)
     // --- Initialize Controller ---
     if (m_remoteController.initialize()) {
         qDebug() << "Connected to controller:" << QString::fromStdString(m_remoteController.getControllerName());
+
+        // Bind to UI as soon as it connects at launch
+        updateControllerTargetCombo();
     }
 
     m_inputThrottleTimer.start();
     m_reconnectElapsedTimer.start();
+    m_guiThrottleTimer.start(); // Start GUI throttle timer
 
     m_controllerTimer = new QTimer(this);
     connect(m_controllerTimer, &QTimer::timeout, this, &MainWindow::pollControllerInput);
     m_controllerTimer->start(16);
 
-
     // --- Setup Station Selection Dropdown ---
-
     connect(ui->comboStation, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &MainWindow::onStationSelected);
 
     ui->comboStation->blockSignals(true);
@@ -117,21 +122,30 @@ MainWindow::MainWindow(QWidget *parent)
     ui->comboStation->addItem("-- Select Station --", "");
 
     // 1. Define the correct local path
-    QString configDirectoryPath = "C:/Users/aron.rezene/Documents/Work/Weld_Room_Projects/SFW/FORCE/VIRTINSTGUI"; // Make sure your path goes here
+    QString configDirectoryPath = "C:/Users/aron.rezene/Documents/Work/Weld_Room_Projects/SFW/FORCE/VIRTINSTGUI";
     QDir configDir(configDirectoryPath);
+
+    // Update filter to look for YAML files instead of INI
     QStringList filters;
-    filters << "*.ini";
+    filters << "*.yaml" << "*.yml";
 
     // 2. Grab the files
-    QFileInfoList iniFiles = configDir.entryInfoList(filters, QDir::Files);
+    QFileInfoList yamlFiles = configDir.entryInfoList(filters, QDir::Files);
 
-    // 3. The crucial loop: Extract the names and inject them into the dropdown
-    for (const QFileInfo& fileInfo : iniFiles) {
+    // 3. Extract the names using yaml-cpp and inject them into the dropdown
+    for (const QFileInfo& fileInfo : yamlFiles) {
         QString filePath = fileInfo.absoluteFilePath();
-        QSettings settings(filePath, QSettings::IniFormat);
+        QString stationName = fileInfo.completeBaseName(); // Fallback to filename
 
-        // Grab the name from the INI file, or fallback to the raw filename
-        QString stationName = settings.value("General/StationName", fileInfo.completeBaseName()).toString();
+        // Parse the YAML to grab the General/StationName
+        try {
+            YAML::Node config = YAML::LoadFile(filePath.toStdString());
+            if (config["General"] && config["General"]["StationName"]) {
+                stationName = QString::fromStdString(config["General"]["StationName"].as<std::string>());
+            }
+        } catch (const YAML::Exception& e) {
+            qDebug() << "Could not parse StationName from" << filePath << ":" << e.what();
+        }
 
         // Push it into the GUI combobox
         ui->comboStation->addItem(stationName, filePath);
@@ -142,9 +156,6 @@ MainWindow::MainWindow(QWidget *parent)
 
     ui->comboStation->setCurrentIndex(0);
     ui->comboStation->blockSignals(false);
-
-
-
 }
 
 MainWindow::~MainWindow()
@@ -169,6 +180,9 @@ MainWindow::~MainWindow()
     delete ui;
 }
 
+
+
+
 void MainWindow::onStationSelected(int index)
 {
     QString iniPath = ui->comboStation->itemData(index).toString();
@@ -176,130 +190,280 @@ void MainWindow::onStationSelected(int index)
     if (!iniPath.isEmpty()) {
         loadStationConfig(iniPath);
     } else {
+        // --- 1. Clear Standard UI Elements ---
         ui->treeWidget->clear();
         ui->comboSequence->clear();
         m_stationDevices.clear();
         m_deviceResourceStrings.clear();
         m_axisTreeItems.clear();
+
+        // --- 2. Clear Dynamically Generated Routine Elements ---
+        QLayoutItem* child;
+        while ((child = ui->verticalLayout_ProcedureSteps->takeAt(0)) != nullptr) {
+            if (child->widget()) {
+                delete child->widget(); // Cleanly destroy the routine containers
+            }
+            delete child;
+        }
+        m_routineParameterInputs.clear();
+
+        // --- 3. Reset Controller Bindings ---
         m_remoteController.clearTargetMotor();
         updateControllerTargetCombo();
     }
 }
 
-void MainWindow::loadStationConfig(const QString& iniFilePath)
-{
-    QSettings settings(iniFilePath, QSettings::IniFormat);
 
+
+void MainWindow::loadStationConfig(const QString& yamlFilePath)
+{
+    // --- 1. Load the YAML File ---
+    YAML::Node config;
+    try {
+        config = YAML::LoadFile(yamlFilePath.toStdString());
+    } catch (const YAML::Exception& e) {
+        qDebug() << "Failed to parse YAML:" << e.what();
+        return;
+    }
+
+    // --- 2. Clear Existing Data and Devices ---
     ui->treeWidget->clear();
     ui->comboSequence->clear();
     m_stationDevices.clear();
     m_deviceResourceStrings.clear();
     m_axisTreeItems.clear();
 
-    settings.beginGroup("Devices");
-    QStringList deviceNames = settings.childKeys();
-
-    for (const QString& devName : deviceNames) {
-        QString resourceString = settings.value(devName).toString();
-        std::shared_ptr<Instrument> instrument;
-
-        QString devUpper = devName.toUpper();
-
-        if (devUpper.contains("ZABER")) {
-            instrument = std::make_shared<Zaber>(m_vrm.handle());
-        } else if (devUpper.contains("VELMEX") || devUpper.contains("VXM")) {
-            instrument = std::make_shared<VelmexVXM>(m_vrm.handle());
-        } else if (devUpper.contains("LDC")) {
-            instrument = std::make_shared<LDC502>(m_vrm.handle());
-        } else if (devUpper.contains("PM100")) {
-            instrument = std::make_shared<PM100D>(m_vrm.handle());
-        } else {
-            instrument = std::make_shared<Instrument>(m_vrm.handle());
+    // Clear any previously generated dynamic routines from the scroll area
+    QLayoutItem* child;
+    while ((child = ui->verticalLayout_ProcedureSteps->takeAt(0)) != nullptr) {
+        if (child->widget()) {
+            delete child->widget(); // Cleanly destroy the container and all its children
         }
+        delete child;
+    }
+    m_routineParameterInputs.clear();
 
-        m_deviceResourceStrings[devName] = resourceString;
+    // --- 3. Load Devices ---
+    if (config["Devices"]) {
+        YAML::Node devices = config["Devices"];
+        for (auto it = devices.begin(); it != devices.end(); ++it) {
+            QString devName = QString::fromStdString(it->first.as<std::string>());
+            QString resourceString = QString::fromStdString(it->second.as<std::string>());
+            std::shared_ptr<Instrument> instrument;
 
-        bool isConnected = false;
-        try {
-            isConnected = instrument->open(resourceString.toStdString(), instrument->defaultSettings());
-            if (devUpper.contains("VELMEX") || devUpper.contains("VXM")) {
-                try {
-                    instrument->write("F"); // Turns off the serial echo
-                    Sleep(20);
-                    instrument->write("C");   // Clears the buffer
-                    Sleep(50);
-                } catch (...) {}
+            QString devUpper = devName.toUpper();
+
+            if (devUpper.contains("ZABER")) {
+                instrument = std::make_shared<Zaber>(m_vrm.handle());
+            } else if (devUpper.contains("VELMEX") || devUpper.contains("VXM")) {
+                instrument = std::make_shared<VelmexVXM>(m_vrm.handle());
+            } else if (devUpper.contains("LDC")) {
+                instrument = std::make_shared<LDC502>(m_vrm.handle());
+            } else if (devUpper.contains("PM100")) {
+                instrument = std::make_shared<PM100D>(m_vrm.handle());
+            } else {
+                instrument = std::make_shared<Instrument>(m_vrm.handle());
             }
-            if (isConnected && devUpper.contains("ZABER")) {
-                for (int devId = 1; devId <= 4; ++devId) {
-                    try { instrument->query("/" + std::to_string(devId) + " activate"); } catch (...) {}
-                    try { instrument->query("/" + std::to_string(devId) + " 1 driver enable"); } catch (...) {}
+
+            m_deviceResourceStrings[devName] = resourceString;
+
+            bool isConnected = false;
+            try {
+                isConnected = instrument->open(resourceString.toStdString(), instrument->defaultSettings());
+                if (devUpper.contains("VELMEX") || devUpper.contains("VXM")) {
+                    try {
+                        instrument->write("F"); // Turns off the serial echo
+                        Sleep(20);
+                        instrument->write("C"); // Clears the buffer
+                        Sleep(50);
+                    } catch (...) {}
+                }
+                if (isConnected && devUpper.contains("ZABER")) {
+                    for (int devId = 1; devId <= 4; ++devId) {
+                        try { instrument->query("/" + std::to_string(devId) + " activate"); } catch (...) {}
+                        try { instrument->query("/" + std::to_string(devId) + " 1 driver enable"); } catch (...) {}
+                    }
+                }
+            } catch (...) {
+                isConnected = false;
+            }
+
+            m_stationDevices[devName] = instrument;
+
+            QTreeWidgetItem* item = new QTreeWidgetItem(ui->treeWidget);
+            item->setText(0, devName);
+
+            if (isConnected) {
+                item->setText(1, "● Connected");
+                item->setForeground(1, QBrush(QColor("#2ecc71")));
+            } else {
+                item->setText(1, "● Disconnected");
+                item->setForeground(1, QBrush(QColor("#e74c3c")));
+            }
+
+            QTreeWidgetItem* childItem = new QTreeWidgetItem(item);
+            childItem->setText(0, "Resource");
+            childItem->setText(1, resourceString);
+
+            struct AxisDisplay {
+                int hwIndex;
+                QString label;
+            };
+
+            if (devUpper.contains("ZABER")) {
+                const AxisDisplay zaberAxes[] = {
+                    { 3, "X" },
+                    { 4, "Y" },
+                    { 2, "Z" },
+                    { 1, "Gripper" }
+                };
+
+                for (const auto& ax : zaberAxes) {
+                    QTreeWidgetItem* axisItem = new QTreeWidgetItem(item);
+                    axisItem->setText(0, ax.label);
+                    axisItem->setText(1, "0 steps");
+                    m_axisTreeItems[devName][ax.hwIndex] = axisItem;
                 }
             }
-        } catch (...) {
-            isConnected = false;
-        }
+            else if (devUpper.contains("VELMEX") || devUpper.contains("VXM")) {
+                const AxisDisplay velmexAxes[] = {
+                    { 1, "X" },
+                    { 2, "Y" },
+                    { 3, "Z" }
+                };
 
-        m_stationDevices[devName] = instrument;
-
-        QTreeWidgetItem* item = new QTreeWidgetItem(ui->treeWidget);
-        item->setText(0, devName);
-
-        if (isConnected) {
-            item->setText(1, "● Connected");
-            item->setForeground(1, QBrush(QColor("#2ecc71")));
-        } else {
-            item->setText(1, "● Disconnected");
-            item->setForeground(1, QBrush(QColor("#e74c3c")));
-        }
-
-        QTreeWidgetItem* childItem = new QTreeWidgetItem(item);
-        childItem->setText(0, "Resource");
-        childItem->setText(1, resourceString);
-
-        struct AxisDisplay {
-            int hwIndex;
-            QString label;
-        };
-
-        if (devUpper.contains("ZABER")) {
-            const AxisDisplay zaberAxes[] = {
-                { 3, "X" },
-                { 4, "Y" },
-                { 2, "Z" },
-                { 1, "Gripper" }
-            };
-
-            for (const auto& ax : zaberAxes) {
-                QTreeWidgetItem* axisItem = new QTreeWidgetItem(item);
-                axisItem->setText(0, ax.label);
-                axisItem->setText(1, "0 steps");
-                m_axisTreeItems[devName][ax.hwIndex] = axisItem;
-            }
-        }
-        else if (devUpper.contains("VELMEX") || devUpper.contains("VXM")) {
-            const AxisDisplay velmexAxes[] = {
-                { 1, "X" },
-                { 2, "Y" },
-                { 3, "Z" }
-            };
-
-            for (const auto& ax : velmexAxes) {
-                QTreeWidgetItem* axisItem = new QTreeWidgetItem(item);
-                axisItem->setText(0, ax.label);
-                axisItem->setText(1, "0 steps");
-                m_axisTreeItems[devName][ax.hwIndex] = axisItem;
+                for (const auto& ax : velmexAxes) {
+                    QTreeWidgetItem* axisItem = new QTreeWidgetItem(item);
+                    axisItem->setText(0, ax.label);
+                    axisItem->setText(1, "0 steps");
+                    m_axisTreeItems[devName][ax.hwIndex] = axisItem;
+                }
             }
         }
     }
-    settings.endGroup();
 
-    settings.beginGroup("Products");
-    QStringList generalKeys = settings.childKeys();
-    for (const QString& key : generalKeys) {
-        ui->comboSequence->addItem(settings.value(key).toString(), key);
+    // --- 4. Dynamically Generate UI from the 'Routines' Schema ---
+    if (config["Routines"]) {
+        YAML::Node routines = config["Routines"];
+        for (auto it = routines.begin(); it != routines.end(); ++it) {
+            QString routineName = QString::fromStdString(it->first.as<std::string>());
+
+            // Create a Container Widget for perfect memory cleanup
+            QWidget* routineContainer = new QWidget(ui->scrollAreaWidgetContents);
+            QVBoxLayout* routineBlock = new QVBoxLayout(routineContainer);
+            routineBlock->setContentsMargins(0, 0, 0, 10);
+
+            // --- Top Row: Text Box & Execute Button ---
+            QHBoxLayout* stepLayout = new QHBoxLayout();
+
+            QTextEdit* stepTextBox = new QTextEdit(routineContainer);
+            stepTextBox->setMaximumHeight(65);
+            stepTextBox->setReadOnly(true);
+            stepTextBox->setHtml(QString("<b>%1</b><br>Routine execution parameters.").arg(routineName));
+
+            QPushButton* stepButton = new QPushButton("Execute", routineContainer);
+            stepButton->setMinimumSize(110, 50);
+            stepButton->setStyleSheet("QPushButton { background-color: #2ecc71; color: white; font-weight: bold; border-radius: 4px; }");
+
+            stepLayout->addWidget(stepTextBox);
+            stepLayout->addWidget(stepButton);
+            routineBlock->addLayout(stepLayout);
+
+            // --- Bottom Row: Parameter Tree with embedded QLineEdits ---
+            QTreeWidget* paramTree = new QTreeWidget(routineContainer);
+            paramTree->setHeaderLabels({"Parameter", "Input Value"});
+            paramTree->setColumnCount(2);
+            paramTree->setAlternatingRowColors(true);
+            paramTree->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+            paramTree->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+            paramTree->setMinimumHeight(130);
+
+            // Add Parameter Inputs based on YAML list
+            YAML::Node params = it->second;
+            for (auto paramIt = params.begin(); paramIt != params.end(); ++paramIt) {
+                QString paramName = QString::fromStdString(paramIt->as<std::string>());
+
+                QTreeWidgetItem* treeItem = new QTreeWidgetItem(paramTree);
+                treeItem->setText(0, paramName);
+
+                QLineEdit* inputBox = new QLineEdit(paramTree);
+                inputBox->setPlaceholderText("Enter value...");
+                inputBox->setStyleSheet("QLineEdit { background-color: white; color: black; }");
+
+                paramTree->setItemWidget(treeItem, 1, inputBox);
+
+                // Map by the routine name so we can look it up easily later
+                m_routineParameterInputs[routineName][paramName] = inputBox;
+            }
+
+            routineBlock->addWidget(paramTree);
+            ui->verticalLayout_ProcedureSteps->addWidget(routineContainer);
+
+            // Connect this specific execute button
+            connect(stepButton, &QPushButton::clicked, this, [this, routineName]() {
+                emit executeSequenceRequested(routineName, routineName);
+            });
+        }
     }
-    settings.endGroup();
+
+    // Push all dynamically added blocks to the top of the scroll area
+    ui->verticalLayout_ProcedureSteps->addSpacerItem(new QSpacerItem(20, 40, QSizePolicy::Minimum, QSizePolicy::Expanding));
+
+    // --- 5. Populate Products and Connect Toggle Logic ---
+    ui->comboSequence->disconnect();
+    ui->comboSequence->clear();
+    ui->comboSequence->addItem("-- Manual Input / No Product --", "");
+
+    if (config["Products"]) {
+        YAML::Node products = config["Products"];
+        for (auto it = products.begin(); it != products.end(); ++it) {
+            QString prodName = QString::fromStdString(it->first.as<std::string>());
+            ui->comboSequence->addItem(prodName, prodName);
+        }
+    }
+
+    // Toggle Input Boxes based on Product Selection and Load YAML Values
+    connect(ui->comboSequence, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this, yamlFilePath](int index) {
+        bool hasProductSelected = (index > 0);
+        QString prodName = ui->comboSequence->currentData().toString();
+
+        YAML::Node dynamicConfig;
+        if (hasProductSelected) {
+            try { dynamicConfig = YAML::LoadFile(yamlFilePath.toStdString()); } catch (...) {}
+        }
+
+        for (auto& routinePair : m_routineParameterInputs) {
+            QString routineName = routinePair.first;
+
+            for (auto& paramPair : routinePair.second) {
+                QString paramName = paramPair.first;
+                QLineEdit* inputBox = paramPair.second;
+                if (!inputBox) continue;
+
+                if (hasProductSelected) {
+                    // Lock the text boxes and visually discolor them
+                    inputBox->setReadOnly(true);
+                    inputBox->setStyleSheet("QLineEdit { background-color: #bdc3c7; color: #7f8c8d; }");
+
+                    // Elegantly drill down into the YAML hierarchy
+                    try {
+                        std::string val = dynamicConfig["Products"][prodName.toStdString()][routineName.toStdString()][paramName.toStdString()].as<std::string>();
+                        inputBox->setText(QString::fromStdString(val));
+                    } catch (...) {
+                        inputBox->setText("N/A"); // Handles if a specific product omits a routine/parameter
+                    }
+                } else {
+                    // Unlock the text boxes and clear them for manual entry
+                    inputBox->setReadOnly(false);
+                    inputBox->setStyleSheet("QLineEdit { background-color: white; color: black; }");
+                    inputBox->clear();
+                }
+            }
+        }
+    });
+
+    // Force initialize the parameter state to empty/editable on load
+    emit ui->comboSequence->currentIndexChanged(0);
 
     ui->treeWidget->expandAll();
     updateControllerTargetCombo();
@@ -311,7 +475,9 @@ void MainWindow::updateControllerTargetCombo()
 {
     ui->comboRemoteTarget->blockSignals(true);
     ui->comboRemoteTarget->clear();
-    ui->comboRemoteTarget->addItem("-- Select Target Device --", "");
+
+    // Change the default placeholder to explicitly show the UI binding
+    ui->comboRemoteTarget->addItem("UI Navigation (Default)", "");
 
     for (const auto& [devName, instrument] : m_stationDevices) {
         QString devUpper = devName.toUpper();
@@ -328,10 +494,9 @@ void MainWindow::updateControllerTargetCombo()
     ui->motorHomeBtn->setVisible(false);
 }
 
+
 void MainWindow::onControllerTargetChanged(int index)
 {
-
-
     ui->textControllerStream->clear();
     ui->textControllerStream->setCurrentCharFormat(QTextCharFormat());
 
@@ -343,6 +508,18 @@ void MainWindow::onControllerTargetChanged(int index)
     if (devName.isEmpty() || !m_stationDevices.count(devName) || !m_stationDevices[devName]) {
         m_remoteController.clearTargetMotor();
         ui->motorHomeBtn->setVisible(false);
+
+        // Output instructions when UI Navigation is active
+        QString instructionsHtml = QString(
+                                       "[%1] <span style='color: #9b59b6;'><b>Target Bound: UI Navigation</b></span><br>"
+                                       "<b>Instructions / Controls:</b><br>"
+                                       "• Use D-Pad to navigate tabs and menus.<br>"
+                                       "• Press A to select options and B to escape.<br>"
+                                       "• Hold Start (Menu) + Back (View) to open this target menu."
+                                       ).arg(QTime::currentTime().toString("hh:mm:ss.zzz"));
+
+        ui->textControllerStream->append(instructionsHtml);
+        ui->textControllerStream->setCurrentCharFormat(QTextCharFormat());
         return;
     }
 
@@ -384,6 +561,7 @@ void MainWindow::onControllerTargetChanged(int index)
     ui->textControllerStream->append(instructionsHtml);
     ui->textControllerStream->setCurrentCharFormat(QTextCharFormat());
 }
+
 
 void MainWindow::onHomeTargetClicked()
 {
@@ -441,9 +619,6 @@ void MainWindow::onHomeTargetClicked()
     ui->textControllerStream->setTextCursor(cursor);
 }
 
-
-
-// 2. Replace updateDeviceTreePositions() in mainwindow.cpp with this:
 void MainWindow::updateDeviceTreePositions()
 {
     // Do not clog the serial port with position queries while the controller is actively sending motion commands
@@ -487,7 +662,6 @@ void MainWindow::updateDeviceTreePositions()
     }
 }
 
-
 void MainWindow::pollControllerInput()
 {
     try {
@@ -504,6 +678,9 @@ void MainWindow::pollControllerInput()
                         .arg(QString::fromStdString(m_remoteController.getControllerName()));
                     ui->textControllerStream->append(logMsg);
                     ui->textControllerStream->setCurrentCharFormat(QTextCharFormat());
+
+                    // Bind to UI as soon as it is hot-plugged or reconnects
+                    updateControllerTargetCombo();
                 }
                 m_reconnectElapsedTimer.restart();
             }
@@ -513,10 +690,6 @@ void MainWindow::pollControllerInput()
         ui->lblRemoteStatus->setText("<span style='color: #2ecc71; font-size: 16pt;'>&#9679;</span>");
         ui->comboRemoteTarget->setEnabled(true);
 
-
-        // FIX: Removed the 50 ms m_inputThrottleTimer block.
-        // Commands now fire directly on the 16 ms timer tick.// FIX: Removed the 50 ms m_inputThrottleTimer block.
-        // Commands now fire directly on the 16 ms timer tick.
         QString target = ui->comboRemoteTarget->currentText().toUpper();
         int stepDistance = target.contains("ZABER") ? 10000 : 100;
 
@@ -526,8 +699,6 @@ void MainWindow::pollControllerInput()
             motionThrottleTimer.start();
         }
 
-        // 2. Define how long the system should wait before sending the next command.
-        // Adjust the 300ms depending on how long your Z and Gripper actually take to move 10,000 steps.
         int requiredDelay =  256 ;
 
         // 3. Only send the motion command if the required time has passed
@@ -535,6 +706,12 @@ void MainWindow::pollControllerInput()
             m_remoteController.processMotionCommands(stepDistance, 1000);
             motionThrottleTimer.restart(); // Reset the timer after sending
         }
+
+        // Process GUI Wide commands if active
+        if (m_remoteController.getActiveProfile() == ControllerProfile::GuiWide) {
+            processGuiWideCommands();
+        }
+
         struct ButtonNamePair {
             SDL_GamepadButton button;
             QString name;
@@ -676,8 +853,6 @@ void MainWindow::toggleStreaming()
     }
 }
 
-
-
 void MainWindow::checkCameraConnection()
 {
     // If the device is already open and streaming, do nothing
@@ -714,10 +889,6 @@ void MainWindow::checkCameraConnection()
     }
 }
 
-
-
-
-// 3. Replace checkDeviceConnections() in mainwindow.cpp with this non-stalling version:
 void MainWindow::checkDeviceConnections()
 {
     int count = ui->treeWidget->topLevelItemCount();
@@ -786,7 +957,6 @@ void MainWindow::checkDeviceConnections()
     }
 }
 
-
 void MainWindow::onExecuteSequenceClicked()
 {
     QString seqKey = ui->comboSequence->currentData().toString();
@@ -799,7 +969,6 @@ void MainWindow::onExecuteSequenceClicked()
 
     emit executeSequenceRequested(seqKey, seqText);
 }
-
 
 void MainWindow::setupControllerLabels()
 {
@@ -825,7 +994,6 @@ void MainWindow::setupControllerLabels()
     updateControllerLabelPositions();
 }
 
-
 void MainWindow::updateControllerLabelPositions()
 {
     if (!ui->labelControllerImage) return;
@@ -842,33 +1010,25 @@ void MainWindow::updateControllerLabelPositions()
     }
 }
 
-
-
 void MainWindow::updateControllerOverlayLabels(const QString& devName)
 {
     QString devUpper = devName.toUpper();
 
     if (devName.isEmpty()) {
-
-
-        // Fallback for any other instrument type
+        // Default / GUI Wide Controller Mappings
         ui->lbl_slow->setText("");
-        ui->lbl_bump_L->setText("");
+        ui->lbl_bump_L->setText("Device Tab");
         ui->lbl_L_analog->setText("");
-        ui->lbl_dpad->setText("");
-        ui->lbl_view->setText("");
-        ui->lbl_menu->setText("");
+        ui->lbl_dpad->setText("Navigate Menus");
+        ui->lbl_view->setText("Toggle View");
+        ui->lbl_menu->setText("Tab Pull Down Menu");
         ui->lbl_fast->setText("");
-        ui->lbl_bump_R->setText("");
-        ui->lbl_Y->setText("");
-        ui->lbl_X->setText("");
-        ui->lbl_B->setText("");
-        ui->lbl_A->setText("");
+        ui->lbl_bump_R->setText("Procedure Tab");
+        ui->lbl_Y->setText("Device Menu");
+        ui->lbl_X->setText("Trigger Video Feed");
+        ui->lbl_B->setText("Escape Menu");
+        ui->lbl_A->setText("Select Option");
         ui->lbl_R_analog->setText("");
-
-
-        // Default / Unselected State
-
     }
     else if (devUpper.contains("ZABER")) {
         // Zaber Controller Mappings (10,000 step increments)
@@ -902,7 +1062,6 @@ void MainWindow::updateControllerOverlayLabels(const QString& devName)
         ui->lbl_A->setText("Z + Step");
         ui->lbl_R_analog->setText("Z Jog (Toggle Speed)");
     }
-
 }
 
 bool MainWindow::eventFilter(QObject *watched, QEvent *event)
@@ -913,3 +1072,114 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
     return QMainWindow::eventFilter(watched, event);
 }
 
+
+void MainWindow::processGuiWideCommands()
+{
+    // STRICT GUI THROTTLE: 300ms delay drops UI sampling rate to ~3Hz
+    // while leaving the motor polling blazing fast at 16ms (60Hz)
+    if (!m_guiThrottleTimer.hasExpired(300)) return;
+
+    bool actionTaken = false;
+
+    bool menuPressed = m_remoteController.isButtonPressed(SDL_GAMEPAD_BUTTON_START);
+    bool viewPressed = m_remoteController.isButtonPressed(SDL_GAMEPAD_BUTTON_BACK);
+
+    // Y: Open Remote Target Binding Menu
+    if (m_remoteController.isButtonPressed(SDL_GAMEPAD_BUTTON_NORTH)) {
+        ui->comboRemoteTarget->setFocus();
+        ui->comboRemoteTarget->showPopup();
+        actionTaken = true;
+    }
+
+    // X Button: Toggle Video Stream
+    if (m_remoteController.isButtonPressed(SDL_GAMEPAD_BUTTON_WEST)) {
+        toggleStreaming();
+        actionTaken = true;
+    }
+
+    // View Button Only: Toggle between layout states (Video Feed & Side Panel vs. Controller Panel)
+    if (viewPressed) {
+        if (m_viewToggleState == 0) {
+            ui->verticalMainSplitter->setSizes({800, 0}); // Collapse bottom console
+            m_viewToggleState = 1;
+        } else {
+            ui->verticalMainSplitter->setSizes({550, 230}); // Restore original geometry
+            m_viewToggleState = 0;
+        }
+        actionTaken = true;
+    }
+    // Menu Button Only: Open the drop-down menu in the current active tab
+    else if (menuPressed) {
+        if (ui->tabWidgetPanels->currentIndex() == 0) {
+            ui->comboStation->setFocus();
+            ui->comboStation->showPopup();
+        } else if (ui->tabWidgetPanels->currentIndex() == 1) {
+            ui->comboSequence->setFocus();
+            ui->comboSequence->showPopup();
+        }
+        actionTaken = true;
+    }
+
+    // LB: Open Device Tab
+    if (m_remoteController.isButtonPressed(SDL_GAMEPAD_BUTTON_LEFT_SHOULDER)) {
+        ui->tabWidgetPanels->setCurrentIndex(0);
+        actionTaken = true;
+    }
+
+    // RB: Open Operating Procedure Tab
+    if (m_remoteController.isButtonPressed(SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER)) {
+        ui->tabWidgetPanels->setCurrentIndex(1);
+        actionTaken = true;
+    }
+
+    // Detect if any QComboBox popup is currently expanded
+    QWidget* fw = QApplication::focusWidget();
+    QComboBox* activeCombo = nullptr;
+
+    if (ui->comboStation->view() && ui->comboStation->view()->isVisible()) activeCombo = ui->comboStation;
+    else if (ui->comboSequence->view() && ui->comboSequence->view()->isVisible()) activeCombo = ui->comboSequence;
+    else if (ui->comboRemoteTarget->view() && ui->comboRemoteTarget->view()->isVisible()) activeCombo = ui->comboRemoteTarget;
+    else if (qobject_cast<QComboBox*>(fw)) activeCombo = qobject_cast<QComboBox*>(fw);
+
+    if (activeCombo && fw) {
+        // Route D-Pad and A/B buttons as native keyboard events to the focused popup view
+        if (m_remoteController.isButtonPressed(SDL_GAMEPAD_BUTTON_DPAD_DOWN)) {
+            QApplication::postEvent(fw, new QKeyEvent(QEvent::KeyPress, Qt::Key_Down, Qt::NoModifier));
+            QApplication::postEvent(fw, new QKeyEvent(QEvent::KeyRelease, Qt::Key_Down, Qt::NoModifier));
+            actionTaken = true;
+        }
+        else if (m_remoteController.isButtonPressed(SDL_GAMEPAD_BUTTON_DPAD_UP)) {
+            QApplication::postEvent(fw, new QKeyEvent(QEvent::KeyPress, Qt::Key_Up, Qt::NoModifier));
+            QApplication::postEvent(fw, new QKeyEvent(QEvent::KeyRelease, Qt::Key_Up, Qt::NoModifier));
+            actionTaken = true;
+        }
+        else if (m_remoteController.isButtonPressed(SDL_GAMEPAD_BUTTON_SOUTH)) { // A button
+            QApplication::postEvent(fw, new QKeyEvent(QEvent::KeyPress, Qt::Key_Return, Qt::NoModifier));
+            QApplication::postEvent(fw, new QKeyEvent(QEvent::KeyRelease, Qt::Key_Return, Qt::NoModifier));
+            activeCombo->clearFocus();
+            actionTaken = true;
+        }
+        else if (m_remoteController.isButtonPressed(SDL_GAMEPAD_BUTTON_EAST)) { // B button
+            QApplication::postEvent(fw, new QKeyEvent(QEvent::KeyPress, Qt::Key_Escape, Qt::NoModifier));
+            QApplication::postEvent(fw, new QKeyEvent(QEvent::KeyRelease, Qt::Key_Escape, Qt::NoModifier));
+            activeCombo->clearFocus();
+            actionTaken = true;
+        }
+    } else {
+        // If no dropdown is open, D-Pad Up explicitly opens the pull-down option at the top of the current tab
+        if (m_remoteController.isButtonPressed(SDL_GAMEPAD_BUTTON_DPAD_UP) && !menuPressed && !viewPressed) {
+            if (ui->tabWidgetPanels->currentIndex() == 0) {
+                ui->comboStation->setFocus();
+                ui->comboStation->showPopup();
+            } else if (ui->tabWidgetPanels->currentIndex() == 1) {
+                ui->comboSequence->setFocus();
+                ui->comboSequence->showPopup();
+            }
+            actionTaken = true;
+        }
+    }
+
+    if (actionTaken) {
+        m_guiThrottleTimer.restart();
+    }
+}

@@ -9,6 +9,8 @@
 #include <QElapsedTimer>
 #include <QMenu>
 #include <QList>
+#include <QLineEdit> // Add to top of mainwindow.h
+
 #include <memory>
 #include <map>
 #include <ic4/ic4.h>
@@ -51,7 +53,8 @@ private:
     void updateDeviceTreePositions();
     void setupControllerLabels();
     void updateControllerLabelPositions();
-    void updateControllerOverlayLabels(const QString& devName); // Add this line
+    void updateControllerOverlayLabels(const QString& devName);
+    void processGuiWideCommands(); // Handle UI Navigation via gamepad
 
     Ui::MainWindow *ui;
     QWidget *m_videoContainer;
@@ -84,11 +87,15 @@ private:
     QTimer *m_controllerTimer;
     QElapsedTimer m_inputThrottleTimer;
     QElapsedTimer m_reconnectElapsedTimer;
+    QElapsedTimer m_guiThrottleTimer; // Throttle UI scrolling
     QString m_lastLoggedInputs;
+
+    int m_viewToggleState = 0; // Tracks layout view mode
 
     // Hardware & Station Configuration
     VisaResourceManager m_vrm;
     std::map<QString, std::shared_ptr<Instrument>> m_stationDevices;
     std::map<QString, QString> m_deviceResourceStrings;
     std::map<QString, std::map<int, QTreeWidgetItem*>> m_axisTreeItems;
+    std::map<QString, std::map<QString, QLineEdit*>> m_routineParameterInputs;
 };

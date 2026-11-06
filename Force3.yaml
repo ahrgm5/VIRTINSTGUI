@@ -1,0 +1,80 @@
+General:
+  StationName: FORCE3
+
+Devices:
+  LDC502: GPIB0::4::INSTR
+  ZABER: ASRL5::INSTR
+  VELMEX: ASRL10::INSTR
+  PM100D: USB0::0x1313::0x8078::P0004157::INSTR
+
+
+# 1. SCHEMA: Defines the UI layout and parameter names for each routine
+Routines:
+  Laser Weld:
+    - Power (W)
+    - Speed (mm/s)
+    - Passes
+  Fiber Align:
+    - Search Radius (mm)
+    - Threshold (dB)
+  Lens Align:
+    - Focus Offset (mm)
+
+# 2. DATA: The specific values injected when a product is selected
+Products:
+
+    butterflyDFB:
+        Laser Weld:
+            Power (W): 1200
+            Speed (mm/s): 40
+            Passes: 2
+        Fiber Align:
+            Search Radius (mm): 0.5
+            Threshold (dB): -0.1
+        Lens Align:
+            Focus Offset (mm): 0.05
+
+    luckyDFB:
+        Laser Weld:
+            Power (W): 1000
+            Speed (mm/s): 50
+            Passes: 1
+        Fiber Align:
+            Search Radius (mm): 1.0
+            Threshold (dB): -0.5
+
+    SM:
+        Laser Weld:
+            Power (W): 1200
+            Speed (mm/s): 40
+            Passes: 2
+        Fiber Align:
+            Search Radius (mm): 1.0
+            Threshold (dB): -0.1
+        Lens Align:
+            Focus Offset (mm): 0.05
+
+    MM:
+        Laser Weld:
+            Power (W): 1200
+            Speed (mm/s): 40
+            Passes: 2
+        Fiber Align:
+            Search Radius (mm): 1.0
+            Threshold (dB): -0.1
+        Lens Align:
+            Focus Offset (mm): 0.05
+
+    miniDIL:
+        Laser Weld:
+            Power (W): 1200
+            Speed (mm/s): 40
+            Passes: 2
+        Fiber Align:
+            Search Radius (mm): 1.0
+            Threshold (dB): -0.1
+        Lens Align:
+            Focus Offset (mm): 0.05
+
+
+

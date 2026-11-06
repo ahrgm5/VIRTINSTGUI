@@ -10,6 +10,7 @@
 
 enum class ControllerProfile {
     None,
+    GuiWide,
     Zaber4Axis,
     LaserWeld3Axis
 };
@@ -40,6 +41,7 @@ public:
 
     void processMotionCommands(int stepDistance = 200, int speed = 2000 );
     void setProfile(ControllerProfile profile) { m_activeProfile = profile; }
+    ControllerProfile getActiveProfile() const { return m_activeProfile; }
 
 private:
     void processZaberCommands(int stepDistance, int speed);
@@ -50,5 +52,5 @@ private:
     bool m_connected;
     bool m_isInitialized = false; // Added to track SDL subsystem initialization state
     std::shared_ptr<IMotorAxis> m_activeMotor;
-    ControllerProfile m_activeProfile = ControllerProfile::None;
+    ControllerProfile m_activeProfile = ControllerProfile::GuiWide; // Default to GuiWide
 };
