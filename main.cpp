@@ -1,6 +1,6 @@
 #include <QApplication>
 #include <ic4/ic4.h>
-#include "mainwindow.h" // Replace with the actual header for your GUI class
+#include "ui/mainwindow.h" // Replace with the actual header for your GUI class
 
 int main(int argc, char *argv[])
 {

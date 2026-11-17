@@ -7,8 +7,64 @@ Devices:
   VELMEX: ASRL10::INSTR
   PM100D: USB0::0x1313::0x8078::P0004157::INSTR
 
+# ========================================================
+# 1. HARDWARE-DEFINED LIMITS
+# Used as fallback when no product is selected.
+# (Velmex uses 400 steps/rev; Zaber limits are read directly
+# from firmware registers via get limit.max, with fallback here)
+# ========================================================
+HardwareLimits:
+  VELMEX:
+    X Axis: { Min: -4000, Max: 4000 }
+    Y Axis: { Min: -4000, Max: 4000 }
+    Z Axis: { Min: -4000, Max: 4000 }
+  ZABER:
+    X Axis: { Min: 0, Max: 12000000, Speed: 8192000 }
+    Y Axis: { Min: 0, Max: 12000000, Speed: 8192000 }
+    Z Axis: { Min: 0, Max: 771029, Speed: 100000 }
+    Grip  : { Min: 0, Max: 419948, Speed: 100000 }
 
-# 1. SCHEMA: Defines the UI layout and parameter names for each routine
+# ========================================================
+# 2. BASELINE SAFETY FIXTURE LIMITS
+# Defines the safe operating envelope for each mounting fixture.
+# ========================================================
+Fixtures:
+  Butterfly_Fixture:
+    ZABER:
+      X Axis: { Min: 25000, Max: 1200000 }
+      Y Axis: { Min: 20000, Max: 1000000 }
+      Z Axis: { Min: 5000,  Max: 350000 }
+      Gripper: { Min: 0,    Max: 45000 }
+    VELMEX:
+      X Axis: { Min: 500, Max: 10000 }
+      Y Axis: { Min: 500, Max: 10000 }
+      Z Axis: { Min: 200, Max: 4500 }
+
+  MiniDIL_Fixture:
+    ZABER:
+      X Axis: { Min: 10000, Max: 900000 }
+      Y Axis: { Min: 10000, Max: 800000 }
+      Z Axis: { Min: 2000,  Max: 250000 }
+      Gripper: { Min: 0,    Max: 35000 }
+    VELMEX:
+      X Axis: { Min: 300, Max: 8000 }
+      Y Axis: { Min: 300, Max: 8000 }
+      Z Axis: { Min: 100, Max: 3500 }
+
+  Standard_Submount_Fixture:
+    ZABER:
+      X Axis: { Min: 15000, Max: 1100000 }
+      Y Axis: { Min: 15000, Max: 950000 }
+      Z Axis: { Min: 4000,  Max: 300000 }
+      Gripper: { Min: 0,    Max: 40000 }
+    VELMEX:
+      X Axis: { Min: 400, Max: 9500 }
+      Y Axis: { Min: 400, Max: 9500 }
+      Z Axis: { Min: 200, Max: 4000 }
+
+# ========================================================
+# 3. SCHEMA: Defines the UI layout for each routine
+# ========================================================
 Routines:
   Laser Weld:
     - Power (W)
@@ -20,61 +76,81 @@ Routines:
   Lens Align:
     - Focus Offset (mm)
 
-# 2. DATA: The specific values injected when a product is selected
+# ========================================================
+# 4. DATA: Product configurations, associated fixtures,
+#    geometric adjustments, and routine parameters.
+# ========================================================
 Products:
+  butterflyDFB:
+    Fixture: Butterfly_Fixture
+    BoundaryAdjustments:
+      ZABER:
+        # Taller package: displace Z boundary upward
+        Z Axis: { MinOffset: 2000, MaxOffset: -10000 }
+      VELMEX:
+        X Axis: { MinOffset: 500 }
+    Laser Weld:
+      Power (W): 1200
+      Speed (mm/s): 40
+      Passes: 2
+    Fiber Align:
+      Search Radius (mm): 0.5
+      Threshold (dB): -0.1
+    Lens Align:
+      Focus Offset (mm): 0.05
 
-    butterflyDFB:
-        Laser Weld:
-            Power (W): 1200
-            Speed (mm/s): 40
-            Passes: 2
-        Fiber Align:
-            Search Radius (mm): 0.5
-            Threshold (dB): -0.1
-        Lens Align:
-            Focus Offset (mm): 0.05
+  luckyDFB:
+    Fixture: Butterfly_Fixture
+    BoundaryAdjustments:
+      ZABER:
+        Gripper: { Min: 1000, Max: 40000 }
+    Laser Weld:
+      Power (W): 1000
+      Speed (mm/s): 50
+      Passes: 1
+    Fiber Align:
+      Search Radius (mm): 1.0
+      Threshold (dB): -0.5
 
-    luckyDFB:
-        Laser Weld:
-            Power (W): 1000
-            Speed (mm/s): 50
-            Passes: 1
-        Fiber Align:
-            Search Radius (mm): 1.0
-            Threshold (dB): -0.5
+  SM:
+    Fixture: Standard_Submount_Fixture
+    Laser Weld:
+      Power (W): 1200
+      Speed (mm/s): 40
+      Passes: 2
+    Fiber Align:
+      Search Radius (mm): 1.0
+      Threshold (dB): -0.1
+    Lens Align:
+      Focus Offset (mm): 0.05
 
-    SM:
-        Laser Weld:
-            Power (W): 1200
-            Speed (mm/s): 40
-            Passes: 2
-        Fiber Align:
-            Search Radius (mm): 1.0
-            Threshold (dB): -0.1
-        Lens Align:
-            Focus Offset (mm): 0.05
+  MM:
+    Fixture: Standard_Submount_Fixture
+    BoundaryAdjustments:
+      VELMEX:
+        Z Axis: { MinOffset: 300, MaxOffset: -500 }
+    Laser Weld:
+      Power (W): 1200
+      Speed (mm/s): 40
+      Passes: 2
+    Fiber Align:
+      Search Radius (mm): 1.0
+      Threshold (dB): -0.1
+    Lens Align:
+      Focus Offset (mm): 0.05
 
-    MM:
-        Laser Weld:
-            Power (W): 1200
-            Speed (mm/s): 40
-            Passes: 2
-        Fiber Align:
-            Search Radius (mm): 1.0
-            Threshold (dB): -0.1
-        Lens Align:
-            Focus Offset (mm): 0.05
-
-    miniDIL:
-        Laser Weld:
-            Power (W): 1200
-            Speed (mm/s): 40
-            Passes: 2
-        Fiber Align:
-            Search Radius (mm): 1.0
-            Threshold (dB): -0.1
-        Lens Align:
-            Focus Offset (mm): 0.05
-
-
-
+  miniDIL:
+    Fixture: MiniDIL_Fixture
+    BoundaryAdjustments:
+      ZABER:
+        Z Axis: { MinOffset: 1000, MaxOffset: -5000 }
+        Gripper: { Min: 0, Max: 30000 }
+    Laser Weld:
+      Power (W): 1200
+      Speed (mm/s): 40
+      Passes: 2
+    Fiber Align:
+      Search Radius (mm): 1.0
+      Threshold (dB): -0.1
+    Lens Align:
+      Focus Offset (mm): 0.05

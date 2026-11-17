@@ -59,31 +59,52 @@ endif()
 set(TS_FILES untitled_ti_ER.ts)
 
 set(PROJECT_SOURCES
+
+   # Device Testing Programs
+
+#  instrTest/SRSLDC502/simple_operation.cpp
+#  instrTest/IPGYLR/simple_operation.cpp
+#  instrTest/Velmex/single_BaudRate.cpp
+#  instrTest/ZABER/simpleOperation.cpp
+
+
+
    # Qt GUI Files
    main.cpp
-   mainwindow.cpp
-   mainwindow.h
-   mainwindow.ui
+
+   ui/mainwindow.cpp
+   ui/mainwindow.h
+   ui/mainwindow.ui
+   ui/axiscontrolwidget.cpp
+   ui/axiscontrolwidget.h
+   ui/axiscontrolwidget.ui
+   ui/routinewidget.cpp
+   ui/routinewidget.h
+   ui/routinewidget.ui
 
    include/ipg.hpp
    include/vrm.hpp
    include/instrument.hpp
-   include/remoteControl.hpp
    include/zaber.hpp
    include/velmex.hpp
    include/ldc.hpp
    include/imotoraxis.hpp
    include/pm100D.hpp
+   include/remoteinputmanager.h
+   include/configloader.h
+   include/hardwaremanager.h
 
    # Hardware & Instrumentation Drivers
    src/ipg.cpp
    src/vrm.cpp
    src/instrument.cpp
-   src/remoteControl.cpp
    src/zaber.cpp
    src/velmex.cpp
    src/ldc.cpp
    src/pm100D.cpp
+   src/configloader.cpp
+   src/hardwaremanager.cpp
+   src/remoteinputmanager.cpp
 
    # Routines Automation
    routines/routine.hpp

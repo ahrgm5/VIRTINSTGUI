@@ -1,7 +1,7 @@
 #include <iostream>
 #include <exception>
 #include <stdexcept>
-#include <vector>
+//#include <vector>
 #include <string>
 #include <chrono>
 #include <thread>
@@ -36,6 +36,9 @@ int main() {
                 vxm.write("C");
                 std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
+                vxm.write("N");
+
+            /*
                 char axis[3] = { 'X', 'Y', 'Z' };
 
                 for (int i = 0; i < 3; i++) {
@@ -49,6 +52,7 @@ int main() {
                     std::cout << " ------> " << vxm.getPosition(i + 1) << '\n' << std::endl;
 
                 }
+            */
             }
         }
 

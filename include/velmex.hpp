@@ -1,42 +1,44 @@
 #pragma once
 
-#include <string>
-#include <memory>
-#include <cstdint>
-#include <visa.h>
 #include "instrument.hpp"
 #include "imotoraxis.hpp"
+#include <string>
+#include <cstdint>
 
-class VelmexVXM : public Instrument {
+class VelmexVXM : public Instrument, public IMotorAxis {
 public:
     static const ChannelSettings defaultVelmexSettings();
-    ChannelSettings defaultSettings() const override { return defaultVelmexSettings(); }
 
-    explicit VelmexVXM(ViSession defaultRM) : Instrument(defaultRM) {}
-    VelmexVXM(ViSession defaultRM, const std::string& resourceName, const ChannelSettings& settings);
+    ChannelSettings defaultSettings() const override {
+        return defaultVelmexSettings();
+    }
+
+    explicit VelmexVXM(
+        ViSession defaultRM,
+        const std::string& resourceName = "",
+        const ChannelSettings& settings = defaultVelmexSettings()
+        );
+
     ~VelmexVXM() override = default;
 
-    void stop(int axis);
-    void setSpeed(int axis, int speed);
-    void moveRelative(int axis, int distance);
-    void moveAbsolute(int axis, int position);
-    int32_t getPosition(int axis);
-    void home(int axis);
-
-    int detectBaudRates(const std::string& resourceName);
-    void setBaudRate(int baudRate);
-    bool autoconnect(const std::string &resourceName);
-};
-
-class VelmexAdapter : public IMotorAxis {
-public:
-    explicit VelmexAdapter(std::shared_ptr<VelmexVXM> velmex);
+    // IMotorAxis Interface Implementation (Limit-Enforced Natively)
+    void stop(int axis = 0) override;
+    void setSpeed(int axis, int speed) override;
     void moveRelative(int axis, int distance) override;
     void moveAbsolute(int axis, int position) override;
-    void stop(int axis) override;
-    void setSpeed(int axis, int speed) override;
     int32_t getPosition(int axis) override;
     void home(int axis) override;
+
+    // Continuous Joystick Jog Overrides (Master/Slave Coordinated XY & Single-Axis Slew)
+    void jogSingleAxis(int axis, int direction, int speed) override;
+    void jogDualAxis(int axisMaster, int dirMaster, int speedMaster,
+                     int axisSlave, int dirSlave, int speedSlave) override;
+
+    // Velmex-Specific Serial Utilities
+    int detectBaudRates(const std::string& resourceName);
+    void setBaudRate(int baudRate);
+    bool autoconnect(const std::string& resourceName);
+
 private:
-    std::shared_ptr<VelmexVXM> m_velmex;
+    std::unordered_map<int, int32_t> m_cachedPositions;
 };

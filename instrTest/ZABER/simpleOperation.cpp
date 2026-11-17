@@ -27,34 +27,34 @@ int main() {
           {
             std::cout << "\n--- Connecting to Zabers ---\n";
 
-            Zaber motionStage(rm.handle(), "ASRL5::INSTR");
+            Zaber motionStage(rm.handle(), "ASRL5::INSTR", Zaber::defaultZaberSettings());
 
             int numberOfDevices = 4;
 
-            motionStage.write("/0 driver enable");
-            motionStage.write("/0 activate");
+            motionStage.write("/1 1 driver enable");
+            motionStage.write("/1 1 activate");
 
             std::cout << motionStage.isOpen() << std::endl;
-            std::cout << "Gripper Axis Position: " << motionStage.getPosition(3) << std::endl;
+            std::cout << "Gripper Axis Position: " << motionStage.getPosition(1) << std::endl;
 
 
            // motionStage.write("/3 stop");
 
-            std::this_thread::sleep_for(std::chrono::seconds(5));
+            std::this_thread::sleep_for(std::chrono::seconds(2));
 
 
-            motionStage.moveAbsolute(3, 0);
-            motionStage.moveAbsolute(3, 12000000);
+            motionStage.moveAbsolute(1, 40000);
+            //motionStage.moveAbsolute(3, 12000000);
 
-            std::this_thread::sleep_for(std::chrono::seconds(5));
+            std::this_thread::sleep_for(std::chrono::seconds(2));
 
-            std::cout << "Axis 3 Motor Position" << motionStage.getPosition(3) << std::endl;
-            std::cout << "Axis 4 Motor Position" << motionStage.getPosition(4) << std::endl;
+            std::cout << "Axis 3 Motor Position: " << motionStage.getPosition(3) << std::endl;
+            std::cout << "Axis 4 Motor Position: " << motionStage.getPosition(4) << std::endl;
 
-            std::this_thread::sleep_for(std::chrono::seconds(5));
+            std::this_thread::sleep_for(std::chrono::seconds(2));
 
-            motionStage.home(3);
-            motionStage.home(4);
+            motionStage.home(1);
+            motionStage.home(0);
 
 
 

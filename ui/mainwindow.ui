@@ -41,6 +41,9 @@
       <property name="orientation">
        <enum>Qt::Orientation::Vertical</enum>
       </property>
+      <property name="childrenCollapsible">
+       <bool>false</bool>
+      </property>
       <widget class="QSplitter" name="mainSplitter">
        <property name="sizePolicy">
         <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
@@ -51,17 +54,29 @@
        <property name="orientation">
         <enum>Qt::Orientation::Horizontal</enum>
        </property>
+       <property name="childrenCollapsible">
+        <bool>false</bool>
+       </property>
        <widget class="QFrame" name="videoFeedFrame">
         <property name="sizePolicy">
          <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
-          <horstretch>1</horstretch>
-          <verstretch>0</verstretch>
+          <horstretch>3</horstretch>
+          <verstretch>1</verstretch>
          </sizepolicy>
+        </property>
+        <property name="minimumSize">
+         <size>
+          <width>480</width>
+          <height>360</height>
+         </size>
         </property>
         <property name="frameShape">
          <enum>QFrame::Shape::Box</enum>
         </property>
         <layout class="QVBoxLayout" name="verticalLayout">
+         <property name="spacing">
+          <number>4</number>
+         </property>
          <property name="leftMargin">
           <number>0</number>
          </property>
@@ -75,26 +90,70 @@
           <number>0</number>
          </property>
          <item>
-          <widget class="QLabel" name="labelVideoPlaceholder">
+          <widget class="QWidget" name="videoViewport" native="true">
            <property name="sizePolicy">
             <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
-             <horstretch>0</horstretch>
-             <verstretch>0</verstretch>
+             <horstretch>1</horstretch>
+             <verstretch>1</verstretch>
             </sizepolicy>
            </property>
-           <property name="text">
-            <string>Video Feed Placeholder</string>
+           <property name="minimumSize">
+            <size>
+             <width>320</width>
+             <height>240</height>
+            </size>
            </property>
-           <property name="alignment">
-            <set>Qt::AlignmentFlag::AlignCenter</set>
+           <property name="styleSheet">
+            <string>background-color: #000000;</string>
+           </property>
+           <widget class="QWidget" name="videoContainer" native="true">
+            <property name="geometry">
+             <rect>
+              <x>0</x>
+              <y>0</y>
+              <width>320</width>
+              <height>240</height>
+             </rect>
+            </property>
+            <property name="styleSheet">
+             <string>background-color: black;</string>
+            </property>
+           </widget>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="btnToggleStream">
+           <property name="minimumSize">
+            <size>
+             <width>0</width>
+             <height>40</height>
+            </size>
+           </property>
+           <property name="styleSheet">
+            <string>QPushButton { background-color: #2ecc71; color: white; font-weight: bold; border-radius: 4px; }</string>
+           </property>
+           <property name="text">
+            <string>Start Stream</string>
            </property>
           </widget>
          </item>
         </layout>
        </widget>
        <widget class="QTabWidget" name="tabWidgetPanels">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+          <horstretch>2</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
+        <property name="minimumSize">
+         <size>
+          <width>360</width>
+          <height>0</height>
+         </size>
+        </property>
         <property name="currentIndex">
-         <number>1</number>
+         <number>0</number>
         </property>
         <widget class="QWidget" name="tabDevices">
          <attribute name="title">
@@ -102,21 +161,51 @@
          </attribute>
          <layout class="QVBoxLayout" name="verticalLayout_TabDevices">
           <item>
-           <layout class="QFormLayout" name="formLayout_Station">
-            <item row="0" column="0">
-             <widget class="QLabel" name="lblStation">
-              <property name="text">
-               <string>Station:</string>
-              </property>
-             </widget>
+           <layout class="QHBoxLayout" name="horizontalLayout_TabDevicesTop">
+            <item>
+             <layout class="QFormLayout" name="formLayout_Station">
+              <item row="0" column="0">
+               <widget class="QLabel" name="lblStation">
+                <property name="text">
+                 <string>Station:</string>
+                </property>
+               </widget>
+              </item>
+              <item row="0" column="1">
+               <widget class="QComboBox" name="comboStation">
+                <property name="minimumSize">
+                 <size>
+                  <width>140</width>
+                  <height>0</height>
+                 </size>
+                </property>
+               </widget>
+              </item>
+             </layout>
             </item>
-            <item row="0" column="1">
-             <widget class="QComboBox" name="comboStation">
-              <property name="minimumSize">
+            <item>
+             <spacer name="horizontalSpacer_DevicesTop">
+              <property name="orientation">
+               <enum>Qt::Orientation::Horizontal</enum>
+              </property>
+              <property name="sizeHint" stdset="0">
                <size>
-                <width>140</width>
-                <height>0</height>
+                <width>40</width>
+                <height>20</height>
                </size>
+              </property>
+             </spacer>
+            </item>
+            <item>
+             <widget class="QCheckBox" name="chkParameterLock">
+              <property name="styleSheet">
+               <string>QCheckBox { font-weight: bold; color: #e67e22; }</string>
+              </property>
+              <property name="text">
+               <string>Parameter Lock</string>
+              </property>
+              <property name="checked">
+               <bool>true</bool>
               </property>
              </widget>
             </item>
@@ -167,7 +256,7 @@
               <rect>
                <x>0</x>
                <y>0</y>
-               <width>397</width>
+               <width>390</width>
                <height>425</height>
               </rect>
              </property>
@@ -273,7 +362,7 @@
             </size>
            </property>
            <property name="pixmap">
-            <pixmap resource="resources.qrc">:/xbox_ctrl.png/xbox_ctrl.png</pixmap>
+            <pixmap resource="../resources.qrc">:/xbox_ctrl.png/xbox_ctrl.png</pixmap>
            </property>
            <property name="scaledContents">
             <bool>true</bool>
@@ -538,7 +627,7 @@
   </widget>
  </widget>
  <resources>
-  <include location="resources.qrc"/>
+  <include location="../resources.qrc"/>
  </resources>
  <connections/>
 </ui>
