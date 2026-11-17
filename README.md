@@ -1,22 +1,18 @@
 # VirtInstrGUI
 
-Instumentation
+Instrumentation
+
+Completed:
+
+Video feed scaling
+Remote control of GUI
+Remote Control of Velmex
 
 
+WIP:
 
-GUI looks the way it should.
+Refine motion increments and jogging for XY axis zaber motors
+Working on implementation for pulse shaping with IPG YLR laser.
 
-Zabers working well enough.
-
-
-
-
-
-Velmex not working at all anymore, fixing that first.
-
-Then show the different commands for each button on the controller.
-
-
-
-commit to GitHub.
-
+Implement weld Schedueling routine
+Implement LIV routine
